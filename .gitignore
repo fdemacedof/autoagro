@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.env
+plantid_key.enc
+*.enc
+venv/
+.env/
+.idea/
+.vscode/
