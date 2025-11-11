@@ -5,7 +5,7 @@ import base64
 import json
 import requests
 from getpass import getpass
-from utils.secure_key_utils import decrypt_api_key # importa função criada antes
+from autoagro.secure_key_utils import decrypt_api_key# importa função criada antes
 
 app = FastAPI(title="PlantID Backend")
 MIN_PROB = 0.7
