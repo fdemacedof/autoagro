@@ -1,0 +1,17 @@
+# --- Framework principal ---
+fastapi==0.115.2
+uvicorn==0.32.0
+
+# --- Segurança e criptografia ---
+cryptography==43.0.1
+python-dotenv==1.0.1
+
+# --- Requisições HTTP ---
+requests==2.32.3
+
+# --- Testes ---
+pytest==8.3.3
+httpx==0.27.2   # usado pelo TestClient do FastAPI
+
+# --- Tipagem opcional / utilidades ---
+typing-extensions>=4.10.0
