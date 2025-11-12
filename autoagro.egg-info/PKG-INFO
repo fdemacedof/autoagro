@@ -1,0 +1,16 @@
+Metadata-Version: 2.4
+Name: autoagro
+Version: 0.1.0
+Summary: Aplicação backend para identificação e análise de saúde de plantas via Plant.id
+Author: Felipe Ferreira
+Author-email: felipe.macedo@hupdata.com
+Requires-Python: >=3.9
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: cryptography
+Requires-Dist: requests
+Dynamic: author
+Dynamic: author-email
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
