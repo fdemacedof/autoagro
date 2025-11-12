@@ -4,7 +4,7 @@ import os
 
 # === Configurações ===
 SERVER_URL = "http://127.0.0.1:8000/analyze"
-IMAGE_PATH = "data/acer-deshojo.jpg"  # altere se necessário
+IMAGE_PATH = "autoagro/tests/data/acer-deshojo.jpg"  # altere se necessário
 
 def test_plantxvit_server():
     """Envia uma imagem para o servidor e exibe o resultado formatado."""

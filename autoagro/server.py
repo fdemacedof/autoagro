@@ -1,44 +1,71 @@
+import sys
+import os
+import io
+import time
+import torch
+import logging
+from PIL import Image
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
-import torch
 from torchvision import transforms
-from PIL import Image
-import io
-import os
-from plantxvit import PlantXViT
-import urllib.request
 
-app = FastAPI(title="AutoAgro - PlantXViT Local")
+# ======================================================
+# 🧭 Ajusta o caminho para o repositório PlantXViT
+# ======================================================
+PLANTXVIT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../PlantXViT/src"))
+if PLANTXVIT_PATH not in sys.path:
+    sys.path.append(PLANTXVIT_PATH)
+
+try:
+    from model import PlantXViT
+except ModuleNotFoundError as e:
+    raise ImportError(
+        f"❌ Não foi possível importar PlantXViT de {PLANTXVIT_PATH}.\n"
+        "Verifique se o repositório foi clonado corretamente:\n"
+        "   git clone https://github.com/sakanaowo/PlantXViT.git\n"
+        "E que o arquivo 'PlantXViT/src/model.py' existe."
+    ) from e
+
+# ======================================================
+# ⚙️ Configuração geral
+# ======================================================
+app = FastAPI(title="AutoAgro - PlantXViT Backend (Offline)")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_PATH = "models/plantxvit_best.pth"
 MIN_PROB = 0.7
 
-# ======================================================
-# 🔧 Carregar modelo salvo localmente
-# ======================================================
+# logging bonito
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%H:%M:%S"
+)
+logger = logging.getLogger(__name__)
 
+# ======================================================
+# 🧠 Função para baixar e carregar o modelo
+# ======================================================
 def download_model_if_needed():
-    """Baixa automaticamente o modelo PlantXViT se não existir."""
+    """Baixa automaticamente o modelo pré-treinado do Hugging Face se não existir."""
     os.makedirs("models", exist_ok=True)
-
     if os.path.exists(MODEL_PATH):
         logger.info("📦 Modelo local encontrado, sem necessidade de download.")
         return
 
     url = "https://huggingface.co/VishnuSivadasVS/plant-disease-classification/resolve/main/model.pth"
     logger.info(f"⬇️ Baixando modelo pré-treinado de {url} ...")
+    import urllib.request
     try:
         urllib.request.urlretrieve(url, MODEL_PATH)
         logger.info(f"✅ Download concluído e salvo em '{MODEL_PATH}'.")
     except Exception as e:
-        raise RuntimeError(f"Falha ao baixar o modelo automaticamente: {e}")
+        raise RuntimeError(f"Falha ao baixar o modelo: {e}")
 
 def load_model():
-    """Carrega o modelo PlantXViT salvo localmente (ou baixa se necessário)."""
+    """Carrega o modelo PlantXViT local."""
     logger.info("🌿 Inicializando modelo PlantXViT...")
     model = PlantXViT(pretrained=False)
 
-    # garante que o modelo está presente
     download_model_if_needed()
 
     try:
@@ -52,9 +79,15 @@ def load_model():
     logger.info(f"✅ Modelo carregado e pronto ({'GPU' if DEVICE == 'cuda' else 'CPU'}).")
     return model
 
-model = load_model()
+try:
+    model = load_model()
+except Exception as e:
+    logger.error(str(e))
+    model = None
 
-# classes (PlantVillage 38 classes)
+# ======================================================
+# 🧩 Classes PlantVillage (38 classes)
+# ======================================================
 CLASSES = [
     'Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy',
     'Blueberry___healthy', 'Cherry_(including_sour)___Powdery_mildew', 'Cherry_(including_sour)___healthy',
@@ -71,7 +104,9 @@ CLASSES = [
     'Tomato___Tomato_mosaic_virus', 'Tomato___healthy'
 ]
 
-# transformações padrão
+# ======================================================
+# 🔄 Pré-processamento da imagem
+# ======================================================
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -84,6 +119,11 @@ transform = transforms.Compose([
 @app.post("/analyze")
 async def analyze_image(file: UploadFile = File(...)):
     """Recebe uma imagem e retorna as classes mais prováveis (espécie + doença)."""
+    if model is None:
+        raise HTTPException(status_code=500, detail="Modelo não carregado. Verifique logs.")
+
+    start_time = time.time()
+
     try:
         contents = await file.read()
         img = Image.open(io.BytesIO(contents)).convert("RGB")
@@ -97,20 +137,32 @@ async def analyze_image(file: UploadFile = File(...)):
         probs = torch.softmax(logits, dim=1)
         top_prob, top_idx = torch.topk(probs, 3)
 
+    elapsed = round(time.time() - start_time, 3)
+
     results = []
     for j, idx in enumerate(top_idx[0]):
         label = CLASSES[idx] if idx < len(CLASSES) else f"class_{idx}"
         prob = float(top_prob[0][j])
         if prob >= MIN_PROB:
-            results.append({"label": label, "probability": prob})
+            results.append({"label": label, "probability": round(prob, 4)})
 
-    return JSONResponse(content={"predictions": results})
+    if not results:
+        raise HTTPException(status_code=422, detail="Nenhuma classe com probabilidade suficiente encontrada.")
 
+    logger.info(f"🖼️ '{file.filename}' processada em {elapsed}s — Top: {results[0]['label']} ({results[0]['probability']:.2f})")
+
+    return JSONResponse(content={
+        "predictions": results,
+        "device": DEVICE,
+        "inference_time": elapsed,
+        "image_name": file.filename
+    })
 
 # ======================================================
 # ▶️ Execução direta
 # ======================================================
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Iniciando servidor local PlantXViT...")
+    logger.info("🚀 Iniciando servidor local PlantXViT...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
