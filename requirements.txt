@@ -1,25 +1,15 @@
-# ======== Core Python Utilities ========
-tqdm==4.66.4
-requests==2.31.0
-python-dotenv==1.0.1
+# === Servidor e API ===
+fastapi>=0.109.0
+uvicorn[standard]>=0.23.0
 
-# ======== Machine Learning / PyTorch ========
-torch==2.3.1
-torchvision==0.18.1
-torchaudio==2.3.1
+# === Deep Learning e Processamento de Imagem ===
+torch>=2.1.0
+torchvision>=0.16.0
+Pillow>=10.0.0
 
-# ======== FastAPI & Web Server ========
-fastapi==0.115.2
-uvicorn==0.32.0
-python-multipart==0.0.9
+# === Utilidades ===
+tqdm>=4.66.0
+requests>=2.31.0
 
-# ======== Cryptography for Key Encryption ========
-cryptography==42.0.5
-
-# ======== Packaging (for setup.py / find_packages) ========
-setuptools>=68.0.0
-
-# ======== Optional: data science utils (safe to include) ========
-scikit-learn==1.5.1
-numpy==1.26.4
-pillow==10.3.0
+# === Logging e Diagnóstico ===
+rich>=13.7.0
