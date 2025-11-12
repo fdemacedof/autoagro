@@ -31,10 +31,12 @@ except ModuleNotFoundError as e:
 # ======================================================
 app = FastAPI(title="AutoAgro - PlantXViT Backend (Offline)")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_PATH = "models/plantxvit_best.pth"
+MODEL_PATH = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), "../PlantXViT/outputs/plantVillage/models/plantxvit_best_plantvillage.pth"
+))
 MIN_PROB = 0.7
 
-# logging bonito
+# logging configurado
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -43,30 +45,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ======================================================
-# 🧠 Função para baixar e carregar o modelo
+# 🧠 Carregar modelo local
 # ======================================================
-def download_model_if_needed():
-    """Baixa automaticamente o modelo pré-treinado do Hugging Face se não existir."""
-    os.makedirs("models", exist_ok=True)
-    if os.path.exists(MODEL_PATH):
-        logger.info("📦 Modelo local encontrado, sem necessidade de download.")
-        return
-
-    url = "https://huggingface.co/VishnuSivadasVS/plant-disease-classification/resolve/main/model.pth"
-    logger.info(f"⬇️ Baixando modelo pré-treinado de {url} ...")
-    import urllib.request
-    try:
-        urllib.request.urlretrieve(url, MODEL_PATH)
-        logger.info(f"✅ Download concluído e salvo em '{MODEL_PATH}'.")
-    except Exception as e:
-        raise RuntimeError(f"Falha ao baixar o modelo: {e}")
-
 def load_model():
-    """Carrega o modelo PlantXViT local."""
+    """Carrega o modelo PlantXViT local (sem baixar nada)."""
     logger.info("🌿 Inicializando modelo PlantXViT...")
     model = PlantXViT(pretrained=False)
 
-    download_model_if_needed()
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(
+            f"❌ Modelo não encontrado em '{MODEL_PATH}'. "
+            "Verifique se o repositório PlantXViT contém o modelo exportado."
+        )
 
     try:
         state_dict = torch.load(MODEL_PATH, map_location=DEVICE)
@@ -76,7 +66,7 @@ def load_model():
 
     model.to(DEVICE)
     model.eval()
-    logger.info(f"✅ Modelo carregado e pronto ({'GPU' if DEVICE == 'cuda' else 'CPU'}).")
+    logger.info(f"✅ Modelo carregado com sucesso ({'GPU' if DEVICE == 'cuda' else 'CPU'}).")
     return model
 
 try:
@@ -105,7 +95,7 @@ CLASSES = [
 ]
 
 # ======================================================
-# 🔄 Pré-processamento da imagem
+# 🔄 Transformações padrão
 # ======================================================
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -165,4 +155,3 @@ if __name__ == "__main__":
     import uvicorn
     logger.info("🚀 Iniciando servidor local PlantXViT...")
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

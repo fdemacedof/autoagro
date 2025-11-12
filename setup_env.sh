@@ -14,7 +14,6 @@ else
 fi
 
 echo "🔧 Ativando ambiente virtual..."
-# shellcheck disable=SC1091
 source venv/bin/activate
 
 # === 2️⃣ Instalar dependências ===
@@ -23,34 +22,21 @@ pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
 
-# === 3️⃣ Verificar ou clonar o repositório PlantXViT ===
-PLANT_PATH="PlantXViT/src/model.py"
-if [ ! -f "$PLANT_PATH" ]; then
-    echo "⬇️ Repositório PlantXViT não encontrado — clonando do GitHub..."
-    if ! git clone https://github.com/sakanaowo/PlantXViT.git; then
-        echo "❌ Falha ao clonar o repositório PlantXViT. Verifique sua conexão."
-        exit 1
-    fi
-    echo "✅ Repositório PlantXViT clonado com sucesso."
+# === 3️⃣ Verificar repositório PlantXViT ===
+if [ ! -f "PlantXViT/src/model.py" ]; then
+    echo "⬇️ Repositório PlantXViT não encontrado — clonando..."
+    git clone https://github.com/sakanaowo/PlantXViT.git
 else
-    echo "✅ Repositório PlantXViT já encontrado localmente."
+    echo "✅ Repositório PlantXViT encontrado localmente."
 fi
 
-# === 4️⃣ Verificar e baixar modelo pré-treinado ===
-MODEL_DIR="models"
-MODEL_PATH="$MODEL_DIR/plantxvit_best.pth"
-MODEL_URL="https://huggingface.co/VishnuSivadasVS/plant-disease-classification/resolve/main/model.pth"
+# === 4️⃣ Verificar modelo local ===
+MODEL_PATH="PlantXViT/outputs/plantVillage/models/plantxvit_best_plantvillage.pth"
 
-echo "🧠 Verificando modelo PlantXViT..."
 if [ ! -f "$MODEL_PATH" ]; then
-    echo "⬇️ Modelo não encontrado — baixando do Hugging Face..."
-    mkdir -p "$MODEL_DIR"
-    if ! wget -O "$MODEL_PATH" "$MODEL_URL"; then
-        echo "❌ Falha ao baixar modelo. Baixe manualmente em:"
-        echo "   $MODEL_URL"
-        exit 1
-    fi
-    echo "✅ Modelo baixado e salvo em '$MODEL_PATH'"
+    echo "❌ Modelo não encontrado em '$MODEL_PATH'"
+    echo "   Verifique se o repositório PlantXViT contém o modelo exportado."
+    exit 1
 else
     echo "✅ Modelo local encontrado em '$MODEL_PATH'"
 fi
@@ -59,4 +45,3 @@ fi
 echo ""
 echo "🚀 Iniciando servidor local PlantXViT em http://127.0.0.1:8000 ..."
 uvicorn autoagro.server_local:app --reload
-
