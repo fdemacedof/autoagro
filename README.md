@@ -59,29 +59,7 @@ O Kampu não utiliza um modelo genérico único. Ele opera com uma **Arquitetura
 1.  **Entrada:** A imagem é capturada e sofre pré-processamento (Center Crop) para focar na planta.
 2.  **Nível 1 (Roteador Taxonômico):** O primeiro modelo identifica *qual* é a planta.
 3.  **Nível 2 (Especialistas):** Com base na espécie, o sistema aciona modelos específicos para aquela cultura.
-
-\`\`\`mermaid
-graph TD;
-    A[📸 Imagem da Câmera] --> B(✂️ Pré-processamento / Crop);
-    B --> C{🤖 Router de Espécie};
-    
-    C -- Pimenta --> D[🌶️ Stack Capsicum];
-    C -- Adenium --> E[🌵 Stack Adenium];
-    C -- Outros --> F[ℹ️ Identificação Básica];
-
-    subgraph "Especialistas de Pimenta"
-    D --> G[🏥 Modelo de Saúde];
-    D --> H[📈 Modelo de Crescimento];
-    end
-    
-    G --> I[📋 Relatório Final];
-    H --> I;
-    E --> I;
-    F --> I;
-\`\`\`
-
-*Isso permite que o sistema escale: podemos adicionar um modelo de doenças para Tomate no futuro sem precisar retreinar o modelo de Pimentas.*
-
+   
 ---
 
 ## 🚀 Como Rodar
