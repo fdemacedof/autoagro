@@ -24,7 +24,7 @@ kampu/
     │   └── index.html
     ├── test/                # Scripts de teste automatizado
     │   └── run_tests.py
-    └── models/              # (IMPORTANTE) Pasta dos modelos de IA
+    └── models/              # (IMPORTANTE) Pasta dos modelos de Machine Learning
         ├── router_species.keras
         └── pepper/
             ├── health.keras
@@ -47,33 +47,40 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-Ou manualmente:
-
-```bash
-# Cria o ambiente virtual
-python3 -m venv venv
-
-# Ativa o ambiente
-source venv/bin/activate  # Linux/Mac
-# ou
-venv\Scripts\activate     # Windows
-
-# Instala dependências
-pip install -r requirements.txt
-```
+⚠️ Evite instalar as dependências manualmente; o script de setup também baixa os modelos **.keras** necessários para o funcionamento da aplicação. 
 
 ---
 
-## ⚠️ Importante: Modelos de IA
-Os arquivos de modelo neural (`.keras`) **não estão incluídos neste repositório** devido ao tamanho dos arquivos (Git LFS).
+## 🧠 Pipeline de Aplicação dos Modelos de Visão Computacional
 
-Para rodar o projeto, você precisa baixar os modelos treinados e colocá-los nas pastas corretas manualmente:
+O Kampu não utiliza um modelo genérico único. Ele opera com uma **Arquitetura Hierárquica de Decisão** para garantir maior precisão e modularidade.
 
-1.  **`router_species.keras`** -> Salvar em `vision_app/models/`
-2.  **`health.keras`** -> Salvar em `vision_app/models/pepper/`
-3.  **`growth.keras`** -> Salvar em `vision_app/models/pepper/`
+### O Fluxo de Dados:
+1.  **Entrada:** A imagem é capturada e sofre pré-processamento (Center Crop) para focar na planta.
+2.  **Nível 1 (Roteador Taxonômico):** O primeiro modelo identifica *qual* é a planta.
+3.  **Nível 2 (Especialistas):** Com base na espécie, o sistema aciona modelos específicos para aquela cultura.
 
-*(Link para download dos modelos será disponibilizado futuramente)*.
+\`\`\`mermaid
+graph TD;
+    A[📸 Imagem da Câmera] --> B(✂️ Pré-processamento / Crop);
+    B --> C{🤖 Router de Espécie};
+    
+    C -- Pimenta --> D[🌶️ Stack Capsicum];
+    C -- Adenium --> E[🌵 Stack Adenium];
+    C -- Outros --> F[ℹ️ Identificação Básica];
+
+    subgraph "Especialistas de Pimenta"
+    D --> G[🏥 Modelo de Saúde];
+    D --> H[📈 Modelo de Crescimento];
+    end
+    
+    G --> I[📋 Relatório Final];
+    H --> I;
+    E --> I;
+    F --> I;
+\`\`\`
+
+*Isso permite que o sistema escale: podemos adicionar um modelo de doenças para Tomate no futuro sem precisar retreinar o modelo de Pimentas.*
 
 ---
 
