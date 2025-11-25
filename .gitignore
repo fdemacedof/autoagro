@@ -1,14 +1,12 @@
+# Ignorar arquivos de modelo (Pesados)
+*.keras
+*.h5
+*.tflite
+
+# Ignorar arquivos temporários do Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-*.log
-.env
-plantid_key.enc
-*.enc
+
+# Ignorar ambiente virtual (se usar)
 venv/
-.env/
-.idea/
-.vscode/
-autoagro/models/
-PlantXViT/
+.env
