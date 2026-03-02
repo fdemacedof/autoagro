@@ -1,17 +1,14 @@
-# 🌿 Kampu
+# Kampu
 **Sistema de Agricultura de Precisão.**
 
 ---
 
-## 📖 Sobre o Projeto
+## Sobre o Projeto
 O **Kampu** é um sistema inteligente de monitoramento vegetal focado em agricultura de precisão "artesanal". Diferente das grandes soluções industriais, o Kampu foca no cuidado individual da planta, utilizando Inteligência Artificial para identificar espécies, diagnosticar doenças e acompanhar estágios fenológicos (crescimento).
-
-### 🏺 Por que "Kampu"?
-O nome tem raízes na língua Tupi-Guarani, derivado de *kampu-ci* (Cambuci), que significa "pote de água" ou "vaso". Ele representa a essência do projeto: conter a vida e a sabedoria da terra através da tecnologia.
 
 ---
 
-## 📂 Estrutura do Projeto
+## Estrutura do Projeto
 A organização atual do módulo de visão computacional é:
 
 ```text
@@ -33,7 +30,7 @@ kampu/
 
 ---
 
-## ⚙️ Instalação e Setup
+## Instalação e Setup
 
 ### 1. Pré-requisitos
 * Python 3.10 ou superior.
@@ -51,7 +48,7 @@ chmod +x setup.sh
 
 ---
 
-## 🧠 Pipeline de Aplicação dos Modelos de Visão Computacional
+## Pipeline de Aplicação dos Modelos de Visão Computacional
 
 O Kampu não utiliza um modelo genérico único. Ele opera com uma **Arquitetura Hierárquica de Decisão** para garantir maior precisão e modularidade.
 
@@ -87,13 +84,13 @@ Isso enviará imagens de teste para o servidor e exibirá o diagnóstico e o tem
 
 ---
 
-## 🔮 Roadmap e Próximos Passos
+## Roadmap e Próximos Passos
 O módulo de visão (`vision_app`) é apenas o primeiro passo. O objetivo do Kampu é se tornar uma plataforma completa de monitoramento autônomo.
 
 ### Fases Futuras:
-* **💧 Monitoramento Hídrico:** Integração de sensores capacitivos de umidade do solo para acionamento automático de rega.
-* **🌡️ Clima:** Monitoramento de temperatura e umidade do ar para ajustes de ventilação em estufa.
-* **☀️ Luminosidade:** Sensores de luz para garantir a fotossíntese ideal (e acionamento de grow-lights se necessário).
-* **🌵 Novas Espécies:** Treinamento de modelos específicos para outras espécies.
+* ** Monitoramento Hídrico:** Integração de sensores capacitivos de umidade do solo para acionamento automático de rega.
+* ** Clima:** Monitoramento de temperatura e umidade do ar para ajustes de ventilação em estufa.
+* ** Luminosidade:** Sensores de luz para garantir a fotossíntese ideal (e acionamento de grow-lights se necessário).
+* ** Novas Espécies:** Treinamento de modelos específicos para outras espécies.
 
 ---
