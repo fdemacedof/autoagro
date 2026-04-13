@@ -10,3 +10,6 @@ __pycache__/
 # Ignorar ambiente virtual (se usar)
 venv/
 .env
+
+# Ignorar fotos
+assets/pictures/
