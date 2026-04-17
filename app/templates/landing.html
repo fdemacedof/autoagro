@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kampu System</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background-color: #f4f7f6; padding: 50px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; }
+        a.btn { 
+            display: block; width: 80%; margin: 20px auto; padding: 15px;
+            background-color: #27ae60; color: white; text-decoration: none;
+            border-radius: 5px; font-size: 18px; font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        a.btn:hover { background-color: #219150; }
+        .legacy-btn { background-color: #34495e !important; }
+        .legacy-btn:hover { background-color: #2c3e50 !important; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌱 Kampu System</h1>
+        <p>Bem-vindo à central do Kampu. Escolha o módulo que deseja acessar:</p>
+        
+        <a href="/dashboard" class="btn">📹 Monitoramento em Tempo Real</a>
+        
+        <a href="/ml_vision" class="btn legacy-btn">🧠 ML Vision (Analisador Fotográfico)</a>
+    </div>
+</body>
+</html>

@@ -13,3 +13,4 @@ venv/
 
 # Ignorar fotos
 assets/pictures/
+assets/pictures_to_video/
