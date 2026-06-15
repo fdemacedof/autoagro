@@ -132,12 +132,23 @@ def escutar_arduino():
 
 def capturar_camera_continua():
     global frame_atual
-    cam = cv2.VideoCapture(1)
+    cam = cv2.VideoCapture(2)
+    
+    # Tenta setar a resolução máxima (Ex: 4K ou Full HD)
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 3840) 
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
+    # Ignora frames acumulados no buffer para pegar sempre o "agora"
+    cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
     while True:
         ret, frame = cam.read()
         if ret:
-            with camera_lock: frame_atual = frame.copy()
-        time.sleep(0.1)
+            # Rotação se necessário (Ex: 90 graus)
+            # frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            
+            with camera_lock:
+                frame_atual = frame.copy()
+        time.sleep(0.01)
 
 def rotina_fotos():
     time.sleep(5) 
