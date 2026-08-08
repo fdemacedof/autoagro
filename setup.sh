@@ -10,16 +10,16 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}🌿 Iniciando Setup do KAMPU...${NC}"
 
 # 1. Verifica Python
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}Erro: Python 3 não encontrado.${NC}"
-    echo "Instale o Python 3 antes de continuar."
+if ! command -v python3.11 &> /dev/null; then
+    echo -e "${RED}Erro: Python 3.11 não encontrado no sistema.${NC}"
+    echo "Instale com: sudo apt install python3.11 python3.11-venv"
     exit 1
 fi
 
 # 2. Cria VENV
 if [ ! -d "venv" ]; then
-    echo -e "${YELLOW}Criando ambiente virtual (venv)...${NC}"
-    python3 -m venv venv
+    echo -e "${YELLOW}Criando ambiente virtual (venv) com Python 3.11...${NC}"
+    python3.11 -m venv venv  # <-- AQUI É A MUDANÇA PRINCIPAL
 else
     echo -e "${GREEN}Ambiente virtual já existe.${NC}"
 fi
@@ -57,7 +57,7 @@ baixar_do_drive() {
         
         # O gdown baixa direto pelo ID
         # --fuzzy ajuda a achar o arquivo mesmo se o drive mudar algo na URL
-        gdown "$file_id" -O "$caminho_local" --fuzzy
+        gdown "$file_id" -O "$caminho_local"
         
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✅ Download concluído!${NC}"
@@ -73,15 +73,12 @@ baixar_do_drive() {
 echo -e "${YELLOW}Verificando modelos de IA no Google Drive...${NC}"
 
 # 1. ROUTER (Modelo Geral) -> Vai para a raiz de models/
-# ID extraído: 1OXytjhOl36avg7LBgSaGwD17XU-HhgkK
 baixar_do_drive "vision_app/models/router_species.keras" "1OXytjhOl36avg7LBgSaGwD17XU-HhgkK"
 
 # 2. PIMENTA SAÚDE (Modelo de Doenças) -> Vai para models/pepper/
-# ID extraído: 15mDkmiwMyNvhThztWjGcwhWv40a-n7y7
 baixar_do_drive "vision_app/models/pepper/health.keras" "15mDkmiwMyNvhThztWjGcwhWv40a-n7y7"
 
 # 3. PIMENTA CRESCIMENTO (Modelo de Estágio) -> Vai para models/pepper/
-# ID extraído: 1ELTvb-2X9bWVDX4EAGa2qipU0iFK0nj6
 baixar_do_drive "vision_app/models/pepper/growth.keras" "1ELTvb-2X9bWVDX4EAGa2qipU0iFK0nj6"
 
 # 6. Finalização

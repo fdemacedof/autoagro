@@ -1,12 +1,13 @@
 import os
 import time
 import threading
-import serial
 import cv2
 import numpy as np
 import io
 import json
 import piexif
+import requests
+import urllib.request
 from flask import Flask, render_template, request, jsonify, Response
 from flask_cors import CORS
 from tensorflow.keras.models import load_model
@@ -17,23 +18,16 @@ app = Flask(__name__)
 CORS(app)
 
 # ==========================================
-# 1. CONFIGURAÇÕES GERAIS (HARDWARE E IA)
+# 1. CONFIGURAÇÕES GERAIS
 # ==========================================
 
-# --- Hardware ---
-PORTA_SERIAL = '/dev/ttyUSB0'
-BAUD_RATE = 9600
-PASTA_ASSETS = os.path.join("assets", "pictures")
+# --- IP DA CÂMERA ESP32 ---
+IP_DO_ESP = "192.168.0.77"
+URL_CAPTURE = f"http://{IP_DO_ESP}/capture"
 
+PASTA_ASSETS = os.path.join("assets", "pictures")
 if not os.path.exists(PASTA_ASSETS):
     os.makedirs(PASTA_ASSETS)
-
-try:
-    ser = serial.Serial(PORTA_SERIAL, BAUD_RATE, timeout=1)
-    print(f"🔌 Conectado ao Arduino na porta {PORTA_SERIAL}")
-except:
-    ser = None
-    print(f"⚠️ Arduino não detectado na porta {PORTA_SERIAL}.")
 
 clima_atual = {
     "umidade": "0", "temperatura": "0", "luminosidade": "0",
@@ -42,10 +36,10 @@ clima_atual = {
 camera_lock = threading.Lock()
 frame_atual = None
 
-# --- Inteligência Artificial ---
+# --- IA e Paths ---
 TARGET_SIZE = (224, 224)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, 'models')
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+MODELS_DIR = os.path.join(BASE_DIR, 'app', 'models')
 
 CLASSES_ROUTER = ['Pepper', 'Potato', 'Tomato']
 CLASSES_SAUDE_PIMENTA = ['Bacterial Spot', 'Cercospora Leaf Spot', 'Curl Virus', 'Healthy Leaf', 'Nutrition Deficiency', 'White spot']
@@ -69,7 +63,7 @@ modelos['pimenta_crescimento'] = carregar_modelo_seguro(os.path.join('pepper', '
 print("✅ Sistemas online!\n")
 
 # ==========================================
-# 2. FUNÇÕES DE SUPORTE (FOTOS EXIF E IA)
+# 2. IA E METADADOS
 # ==========================================
 
 def salvar_foto_com_metadados(frame, caminho):
@@ -111,53 +105,36 @@ def consultar_modelo(modelo, img_array, lista_classes):
     return classe, confianca
 
 # ==========================================
-# 3. THREADS DE HARDWARE
+# 3. THREADS DE REDE (VÍDEO)
 # ==========================================
 
-def escutar_arduino():
-    global clima_atual
-    while True:
-        if ser and ser.in_waiting > 0:
-            try:
-                linha = ser.readline().decode('utf-8').strip()
-                if "|" in linha:
-                    partes = linha.split("|")
-                    clima_atual["umidade"] = partes[0].split(":")[1]
-                    clima_atual["temperatura"] = partes[1].split(":")[1]
-                    clima_atual["luminosidade"] = partes[2].split(":")[1]
-                    clima_atual["umidificador"] = partes[3].split(":")[1]
-                    clima_atual["ultimo_update"] = time.strftime("%H:%M:%S")
-            except: pass
-        time.sleep(1)
-
-def capturar_camera_continua():
+def rotina_captura_periodica():
     global frame_atual
-    cam = cv2.VideoCapture(2)
     
-    # Tenta setar a resolução máxima (Ex: 4K ou Full HD)
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 3840) 
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
-    # Ignora frames acumulados no buffer para pegar sempre o "agora"
-    cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
     while True:
-        ret, frame = cam.read()
-        if ret:
-            # Rotação se necessário (Ex: 90 graus)
-            # frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        print(f"📸 Baixando foto de alta resolução: {URL_CAPTURE}")
+        try:
+            # Faz a requisição HTTP pedindo a imagem estática da Câmera ESP32
+            resposta = urllib.request.urlopen(URL_CAPTURE, timeout=10)
             
-            with camera_lock:
-                frame_atual = frame.copy()
-        time.sleep(0.01)
-
-def rotina_fotos():
-    time.sleep(5) 
-    while True:
-        with camera_lock:
-            if frame_atual is not None:
+            # Converte os dados brutos em uma imagem OpenCV
+            img_array = np.asarray(bytearray(resposta.read()), dtype=np.uint8)
+            img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            
+            if img is not None:
+                with camera_lock:
+                    frame_atual = img
+                
+                # Salva a foto na pasta assets com os metadados do momento exato
                 nome_arquivo = f"kampu_{int(time.time())}.jpg"
-                salvar_foto_com_metadados(frame_atual, os.path.join(PASTA_ASSETS, nome_arquivo))
-        time.sleep(600) 
+                caminho = os.path.join(PASTA_ASSETS, nome_arquivo)
+                salvar_foto_com_metadados(img, caminho)
+                
+        except Exception as e:
+            print(f"⚠️ Erro ao capturar a foto da Câmera: {e}")
+            
+        # Dorme por 2 minutos (120 segundos) antes da próxima foto
+        time.sleep(10) 
 
 def gerar_stream_web():
     global frame_atual
@@ -167,41 +144,58 @@ def gerar_stream_web():
                 ret, buffer = cv2.imencode('.jpg', frame_atual)
                 if ret:
                     yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        # A página web recarrega o frame local a cada 100ms, mas a imagem só muda a cada 2 minutos
         time.sleep(0.1)
 
-threading.Thread(target=escutar_arduino, daemon=True).start()
-threading.Thread(target=capturar_camera_continua, daemon=True).start()
-threading.Thread(target=rotina_fotos, daemon=True).start()
+# Inicia a thread de monitoramento da câmera (o clima agora é passivo via webhook)
+threading.Thread(target=rotina_captura_periodica, daemon=True).start()
 
 # ==========================================
-# 4. ROTAS (FRONTEND E API)
+# 4. ROTAS FLASK E RECEPÇÃO DE SENSORES
 # ==========================================
 
-# Nova Landing Page
 @app.route('/')
 def landing(): 
     return render_template('landing.html')
 
-# Painel de Hardware Atual
 @app.route('/dashboard')
 def dashboard(): 
     return render_template('dashboard.html')
 
-# App Legacy de IA
 @app.route('/ml_vision')
 def ia_legacy(): 
-    return render_template('ml_vision.html') # Renomeie o index.html legado para ia.html
+    return render_template('ml_vision.html')
 
-# APIs do Hardware
 @app.route('/api/clima')
 def get_clima(): 
+    # Usado pelo dashboard frontend para puxar os dados atuais
     return jsonify(clima_atual)
 
 @app.route('/video_feed')
 def video_feed(): 
     return Response(gerar_stream_web(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-# API da Inteligência Artificial
+# --- NOVA ROTA: Recebendo os dados do NodeMCU (DHT11) ---
+@app.route('/api/sensores', methods=['POST'])
+def receber_sensores():
+    global clima_atual
+    
+    dados = request.get_json()
+    if not dados:
+        return jsonify({"erro": "Nenhum dado JSON recebido"}), 400
+
+    if 'temperatura_ar' in dados:
+        clima_atual['temperatura'] = round(dados['temperatura_ar'], 1)
+    
+    if 'umidade_ar' in dados:
+        clima_atual['umidade'] = round(dados['umidade_ar'], 1)
+    
+    clima_atual['ultimo_update'] = time.strftime("%H:%M:%S")
+
+    print(f"🌡️ Leitura recebida do NodeMCU: Temp {clima_atual['temperatura']}°C | Umidade {clima_atual['umidade']}%")
+    
+    return jsonify({"status": "sucesso", "clima_atual": clima_atual}), 200
+
 @app.route('/analisar_planta', methods=['POST'])
 def analisar():
     inicio = time.time()

@@ -5,3 +5,8 @@ pillow
 numpy
 gdown
 requests
+gdown
+pyserial
+opencv-python-headless
+piexif
+Pillow
