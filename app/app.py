@@ -22,8 +22,12 @@ CORS(app)
 # ==========================================
 
 # --- IP DA CÂMERA ESP32 ---
-IP_DO_ESP = "192.168.0.77"
+IP_DO_ESP = "192.168.0.42"
 URL_CAPTURE = f"http://{IP_DO_ESP}/capture"
+
+# --- IP DO NODEMCU (Sensor DHT11 + Relé) ---
+IP_DO_NODEMCU = "192.168.0.43"  # <-- ajuste para o IP real, visto no Monitor Serial
+URL_NODEMCU = f"http://{IP_DO_NODEMCU}"
 
 PASTA_ASSETS = os.path.join("assets", "pictures")
 if not os.path.exists(PASTA_ASSETS):
@@ -31,7 +35,7 @@ if not os.path.exists(PASTA_ASSETS):
 
 clima_atual = {
     "umidade": "0", "temperatura": "0", "luminosidade": "0",
-    "umidificador": "OFF", "ultimo_update": "--:--"
+    "umidificador": "OFF", "modo_rele": "automatico", "ultimo_update": "--:--"
 }
 camera_lock = threading.Lock()
 frame_atual = None
@@ -189,12 +193,59 @@ def receber_sensores():
     
     if 'umidade_ar' in dados:
         clima_atual['umidade'] = round(dados['umidade_ar'], 1)
+
+    if 'umidificador' in dados:
+        clima_atual['umidificador'] = dados['umidificador']
+
+    if 'modo' in dados:
+        clima_atual['modo_rele'] = dados['modo']
     
     clima_atual['ultimo_update'] = time.strftime("%H:%M:%S")
 
     print(f"🌡️ Leitura recebida do NodeMCU: Temp {clima_atual['temperatura']}°C | Umidade {clima_atual['umidade']}%")
     
     return jsonify({"status": "sucesso", "clima_atual": clima_atual}), 200
+
+# ==========================================
+# 5. CONTROLE MANUAL DO RELÉ (proxy p/ NodeMCU)
+# ==========================================
+
+def chamar_nodemcu(caminho):
+    """Repassa o comando HTTP GET para o NodeMCU e retorna a resposta dele."""
+    try:
+        resposta = requests.get(f"{URL_NODEMCU}{caminho}", timeout=5)
+        return resposta.json(), resposta.status_code
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Erro ao comunicar com o NodeMCU: {e}")
+        return {"erro": "Não foi possível conectar ao NodeMCU", "detalhe": str(e)}, 503
+
+@app.route('/api/rele/on', methods=['POST'])
+def rele_ligar():
+    dados, status_code = chamar_nodemcu("/rele/on")
+    if status_code == 200:
+        clima_atual['umidificador'] = "ON"
+        clima_atual['modo_rele'] = "manual"
+    return jsonify(dados), status_code
+
+@app.route('/api/rele/off', methods=['POST'])
+def rele_desligar():
+    dados, status_code = chamar_nodemcu("/rele/off")
+    if status_code == 200:
+        clima_atual['umidificador'] = "OFF"
+        clima_atual['modo_rele'] = "manual"
+    return jsonify(dados), status_code
+
+@app.route('/api/rele/auto', methods=['POST'])
+def rele_modo_automatico():
+    dados, status_code = chamar_nodemcu("/rele/auto")
+    if status_code == 200:
+        clima_atual['modo_rele'] = "automatico"
+    return jsonify(dados), status_code
+
+@app.route('/api/rele/status', methods=['GET'])
+def rele_status():
+    dados, status_code = chamar_nodemcu("/status")
+    return jsonify(dados), status_code
 
 @app.route('/analisar_planta', methods=['POST'])
 def analisar():

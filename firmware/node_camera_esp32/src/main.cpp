@@ -1,8 +1,11 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiManager.h>
 #include "esp_camera.h"
 #include "esp_http_server.h"
+
+// --- CREDENCIAIS WIFI (hardcoded) ---
+const char* ssid = WIFI_SSID;
+const char* pass = WIFI_PASS;
 
 // --- MAPEAMENTO DE HARDWARE ---
 #define PWDN_GPIO_NUM     -1
@@ -27,21 +30,17 @@ httpd_handle_t camera_httpd = NULL;
 static esp_err_t capture_handler(httpd_req_t *req) {
   camera_fb_t *fb = NULL;
   esp_err_t res = ESP_OK;
-  
   fb = esp_camera_fb_get();
   if (!fb) {
     Serial.println("Erro: Falha na captura da foto");
     httpd_resp_send_500(req);
     return ESP_FAIL;
   }
-  
   httpd_resp_set_type(req, "image/jpeg");
   httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-  
   res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
   esp_camera_fb_return(fb);
-  
   return res;
 }
 
@@ -49,9 +48,9 @@ void startCameraServer() {
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
   config.max_uri_handlers = 4;
-  config.max_open_sockets = 4;     
-  config.stack_size = 8192;        
-  config.recv_wait_timeout = 10; 
+  config.max_open_sockets = 4;
+  config.stack_size = 8192;
+  config.recv_wait_timeout = 10;
   config.send_wait_timeout = 10;
 
   httpd_uri_t capture_uri = { .uri = "/capture", .method = HTTP_GET, .handler = capture_handler, .user_ctx = NULL };
@@ -62,10 +61,33 @@ void startCameraServer() {
   }
 }
 
+void connectWiFi() {
+  Serial.print("Conectando ao Wi-Fi");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, pass);
+
+  int tentativas = 0;
+  while (WiFi.status() != WL_CONNECTED && tentativas < 40) { // ~20s de timeout
+    delay(500);
+    Serial.print(".");
+    tentativas++;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nFalha ao conectar. Reiniciando...");
+    delay(2000);
+    ESP.restart();
+  }
+
+  Serial.println("\nWiFi Conectado!");
+  Serial.print("Endpoint de Captura: http://");
+  Serial.print(WiFi.localIP());
+  Serial.println("/capture");
+}
+
 void setup() {
   Serial.begin(115200);
-  delay(3000); 
-  
+  delay(3000);
   Serial.println("\n--- Kampu OS: Iniciando Câmera em SVGA (800x600) ---");
 
   camera_config_t config;
@@ -88,9 +110,7 @@ void setup() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG; 
-  
-  // Resolução média para estabilidade total (Ideal para a IA do Kampu)
+  config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_SVGA; // 800x600
   config.jpeg_quality = 12;
   config.fb_count = 1;
@@ -99,27 +119,21 @@ void setup() {
   if (err != ESP_OK) {
     Serial.printf("Erro fatal na câmera: 0x%x\n", err);
     delay(3000);
-    ESP.restart(); 
+    ESP.restart();
   }
 
   camera_fb_t *fb = esp_camera_fb_get();
   if (fb) esp_camera_fb_return(fb);
 
-  WiFiManager wm;
-  Serial.println("Conectando ao Wi-Fi...");
-  
-  if (!wm.autoConnect("Kampu_OS")) {
-    ESP.restart();
-  }
-
-  Serial.println("WiFi Conectado!");
-  Serial.print("Endpoint de Captura: http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("/capture");
-
+  connectWiFi();
   startCameraServer();
 }
 
 void loop() {
-  delay(10000); 
+  // Reconecta automaticamente se o WiFi cair
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi caiu, reconectando...");
+    connectWiFi();
+  }
+  delay(10000);
 }

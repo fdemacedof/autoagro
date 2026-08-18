@@ -12,6 +12,7 @@
         .sensor-val { font-size: 2.5rem; font-weight: bold; color: var(--kampu-dark); }
         .live-indicator { width: 12px; height: 12px; background: #dc3545; border-radius: 50%; display: inline-block; animation: blink 1s infinite; }
         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        .btn-modo.active { box-shadow: inset 0 0 0 2px rgba(0,0,0,0.15); }
     </style>
 </head>
 <body>
@@ -49,24 +50,33 @@
                         <div class="sensor-val" id="umi-val">--%</div>
                     </div>
                 </div>
-                <div class="col-12">
-                    <div class="card glass-card p-4 text-center">
-                        <small class="text-muted text-uppercase fw-bold">Luminosidade</small>
-                        <div class="sensor-val" id="luz-val">--</div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
 
     <div class="row mt-4">
         <div class="col-12">
-            <div class="card glass-card p-3 d-flex flex-row align-items-center justify-content-between">
-                <div>
-                    <i class="bi bi-water text-primary fs-4 me-2"></i>
-                    <strong>Umidificador:</strong> <span id="h-status" class="badge bg-secondary">OFF</span>
+            <div class="card glass-card p-3">
+                <div class="d-flex flex-row align-items-center justify-content-between mb-3">
+                    <div>
+                        <i class="bi bi-water text-primary fs-4 me-2"></i>
+                        <strong>Umidificador:</strong>
+                        <span id="h-status" class="badge bg-secondary">OFF</span>
+                        <span id="h-modo" class="badge bg-light text-dark border ms-1">automático</span>
+                    </div>
+                    <small class="text-muted">Última atualização: <span id="update-time">--:--</span></small>
                 </div>
-                <small class="text-muted">Última atualização: <span id="update-time">--:--</span></small>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success btn-modo" id="btn-on" onclick="setRele('on')">
+                        <i class="bi bi-play-fill"></i> Ligar
+                    </button>
+                    <button class="btn btn-outline-danger btn-modo" id="btn-off" onclick="setRele('off')">
+                        <i class="bi bi-stop-fill"></i> Desligar
+                    </button>
+                    <button class="btn btn-outline-secondary btn-modo" id="btn-auto" onclick="setRele('auto')">
+                        <i class="bi bi-arrow-repeat"></i> Automático
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -79,15 +89,32 @@
             .then(data => {
                 document.getElementById('temp-val').innerText = data.temperatura;
                 document.getElementById('umi-val').innerText = data.umidade;
-                document.getElementById('luz-val').innerText = data.luminosidade;
                 document.getElementById('update-time').innerText = data.ultimo_update;
-                
+
                 const hStatus = document.getElementById('h-status');
                 hStatus.innerText = data.umidificador;
                 hStatus.className = data.umidificador === "ON" ? "badge bg-success" : "badge bg-secondary";
+
+                const hModo = document.getElementById('h-modo');
+                const modo = data.modo_rele || "automatico";
+                hModo.innerText = modo === "manual" ? "manual" : "automático";
+
+                // Destaca visualmente o botão de modo ativo
+                document.getElementById('btn-auto').classList.toggle('active', modo !== "manual");
+                document.getElementById('btn-on').classList.toggle('active', modo === "manual" && data.umidificador === "ON");
+                document.getElementById('btn-off').classList.toggle('active', modo === "manual" && data.umidificador === "OFF");
             });
     }
+
+    function setRele(comando) {
+        fetch(`/api/rele/${comando}`, { method: 'POST' })
+            .then(r => r.json())
+            .then(() => updateDashboard())
+            .catch(err => console.error("Erro ao enviar comando do relé:", err));
+    }
+
     setInterval(updateDashboard, 2000);
+    updateDashboard();
 </script>
 </body>
 </html>

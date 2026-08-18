@@ -76,7 +76,7 @@ def criar_timelapse(pasta_origem, arquivo_saida, fps=30):
 # CONFIGURAÇÕES DE USO
 # ==========================================
 pasta_das_fotos = 'assets/pictures'       # Coloque o caminho da sua pasta aqui
-nome_do_video = 'kampu_mulungu.mp4'      # Nome do arquivo final
+nome_do_video = 'kampu.mp4'      # Nome do arquivo final
 frames_por_segundo = 15                  # 24 ou 30 para vídeo padrão, 60 para movimento super suave
 
 # Executa o código

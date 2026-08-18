@@ -1,0 +1,591 @@
+diff --git a/app/app.py b/app/app.py
+index d481ac07..2271f462 100644
+--- a/app/app.py
++++ b/app/app.py
+@@ -22,16 +22,20 @@ CORS(app)
+ # ==========================================
+ 
+ # --- IP DA CÂMERA ESP32 ---
+-IP_DO_ESP = "192.168.0.77"
++IP_DO_ESP = "192.168.0.42"
+ URL_CAPTURE = f"http://{IP_DO_ESP}/capture"
+ 
++# --- IP DO NODEMCU (Sensor DHT11 + Relé) ---
++IP_DO_NODEMCU = "192.168.0.43"  # <-- ajuste para o IP real, visto no Monitor Serial
++URL_NODEMCU = f"http://{IP_DO_NODEMCU}"
++
+ PASTA_ASSETS = os.path.join("assets", "pictures")
+ if not os.path.exists(PASTA_ASSETS):
+     os.makedirs(PASTA_ASSETS)
+ 
+ clima_atual = {
+     "umidade": "0", "temperatura": "0", "luminosidade": "0",
+-    "umidificador": "OFF", "ultimo_update": "--:--"
++    "umidificador": "OFF", "modo_rele": "automatico", "ultimo_update": "--:--"
+ }
+ camera_lock = threading.Lock()
+ frame_atual = None
+@@ -189,6 +193,12 @@ def receber_sensores():
+     
+     if 'umidade_ar' in dados:
+         clima_atual['umidade'] = round(dados['umidade_ar'], 1)
++
++    if 'umidificador' in dados:
++        clima_atual['umidificador'] = dados['umidificador']
++
++    if 'modo' in dados:
++        clima_atual['modo_rele'] = dados['modo']
+     
+     clima_atual['ultimo_update'] = time.strftime("%H:%M:%S")
+ 
+@@ -196,6 +206,47 @@ def receber_sensores():
+     
+     return jsonify({"status": "sucesso", "clima_atual": clima_atual}), 200
+ 
++# ==========================================
++# 5. CONTROLE MANUAL DO RELÉ (proxy p/ NodeMCU)
++# ==========================================
++
++def chamar_nodemcu(caminho):
++    """Repassa o comando HTTP GET para o NodeMCU e retorna a resposta dele."""
++    try:
++        resposta = requests.get(f"{URL_NODEMCU}{caminho}", timeout=5)
++        return resposta.json(), resposta.status_code
++    except requests.exceptions.RequestException as e:
++        print(f"⚠️ Erro ao comunicar com o NodeMCU: {e}")
++        return {"erro": "Não foi possível conectar ao NodeMCU", "detalhe": str(e)}, 503
++
++@app.route('/api/rele/on', methods=['POST'])
++def rele_ligar():
++    dados, status_code = chamar_nodemcu("/rele/on")
++    if status_code == 200:
++        clima_atual['umidificador'] = "ON"
++        clima_atual['modo_rele'] = "manual"
++    return jsonify(dados), status_code
++
++@app.route('/api/rele/off', methods=['POST'])
++def rele_desligar():
++    dados, status_code = chamar_nodemcu("/rele/off")
++    if status_code == 200:
++        clima_atual['umidificador'] = "OFF"
++        clima_atual['modo_rele'] = "manual"
++    return jsonify(dados), status_code
++
++@app.route('/api/rele/auto', methods=['POST'])
++def rele_modo_automatico():
++    dados, status_code = chamar_nodemcu("/rele/auto")
++    if status_code == 200:
++        clima_atual['modo_rele'] = "automatico"
++    return jsonify(dados), status_code
++
++@app.route('/api/rele/status', methods=['GET'])
++def rele_status():
++    dados, status_code = chamar_nodemcu("/status")
++    return jsonify(dados), status_code
++
+ @app.route('/analisar_planta', methods=['POST'])
+ def analisar():
+     inicio = time.time()
+diff --git a/app/templates/dashboard.html b/app/templates/dashboard.html
+index 448c38dc..17b4ef85 100644
+--- a/app/templates/dashboard.html
++++ b/app/templates/dashboard.html
+@@ -12,6 +12,7 @@
+         .sensor-val { font-size: 2.5rem; font-weight: bold; color: var(--kampu-dark); }
+         .live-indicator { width: 12px; height: 12px; background: #dc3545; border-radius: 50%; display: inline-block; animation: blink 1s infinite; }
+         @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
++        .btn-modo.active { box-shadow: inset 0 0 0 2px rgba(0,0,0,0.15); }
+     </style>
+ </head>
+ <body>
+@@ -49,24 +50,33 @@
+                         <div class="sensor-val" id="umi-val">--%</div>
+                     </div>
+                 </div>
+-                <div class="col-12">
+-                    <div class="card glass-card p-4 text-center">
+-                        <small class="text-muted text-uppercase fw-bold">Luminosidade</small>
+-                        <div class="sensor-val" id="luz-val">--</div>
+-                    </div>
+-                </div>
+             </div>
+         </div>
+     </div>
+ 
+     <div class="row mt-4">
+         <div class="col-12">
+-            <div class="card glass-card p-3 d-flex flex-row align-items-center justify-content-between">
+-                <div>
+-                    <i class="bi bi-water text-primary fs-4 me-2"></i>
+-                    <strong>Umidificador:</strong> <span id="h-status" class="badge bg-secondary">OFF</span>
++            <div class="card glass-card p-3">
++                <div class="d-flex flex-row align-items-center justify-content-between mb-3">
++                    <div>
++                        <i class="bi bi-water text-primary fs-4 me-2"></i>
++                        <strong>Umidificador:</strong>
++                        <span id="h-status" class="badge bg-secondary">OFF</span>
++                        <span id="h-modo" class="badge bg-light text-dark border ms-1">automático</span>
++                    </div>
++                    <small class="text-muted">Última atualização: <span id="update-time">--:--</span></small>
++                </div>
++                <div class="d-flex gap-2">
++                    <button class="btn btn-success btn-modo" id="btn-on" onclick="setRele('on')">
++                        <i class="bi bi-play-fill"></i> Ligar
++                    </button>
++                    <button class="btn btn-outline-danger btn-modo" id="btn-off" onclick="setRele('off')">
++                        <i class="bi bi-stop-fill"></i> Desligar
++                    </button>
++                    <button class="btn btn-outline-secondary btn-modo" id="btn-auto" onclick="setRele('auto')">
++                        <i class="bi bi-arrow-repeat"></i> Automático
++                    </button>
+                 </div>
+-                <small class="text-muted">Última atualização: <span id="update-time">--:--</span></small>
+             </div>
+         </div>
+     </div>
+@@ -79,15 +89,32 @@
+             .then(data => {
+                 document.getElementById('temp-val').innerText = data.temperatura;
+                 document.getElementById('umi-val').innerText = data.umidade;
+-                document.getElementById('luz-val').innerText = data.luminosidade;
+                 document.getElementById('update-time').innerText = data.ultimo_update;
+-                
++
+                 const hStatus = document.getElementById('h-status');
+                 hStatus.innerText = data.umidificador;
+                 hStatus.className = data.umidificador === "ON" ? "badge bg-success" : "badge bg-secondary";
++
++                const hModo = document.getElementById('h-modo');
++                const modo = data.modo_rele || "automatico";
++                hModo.innerText = modo === "manual" ? "manual" : "automático";
++
++                // Destaca visualmente o botão de modo ativo
++                document.getElementById('btn-auto').classList.toggle('active', modo !== "manual");
++                document.getElementById('btn-on').classList.toggle('active', modo === "manual" && data.umidificador === "ON");
++                document.getElementById('btn-off').classList.toggle('active', modo === "manual" && data.umidificador === "OFF");
+             });
+     }
++
++    function setRele(comando) {
++        fetch(`/api/rele/${comando}`, { method: 'POST' })
++            .then(r => r.json())
++            .then(() => updateDashboard())
++            .catch(err => console.error("Erro ao enviar comando do relé:", err));
++    }
++
+     setInterval(updateDashboard, 2000);
++    updateDashboard();
+ </script>
+ </body>
+ </html>
+\ No newline at end of file
+diff --git a/assets/functions/anti_reflexo.py b/assets/functions/anti_reflexo.py
+new file mode 100644
+index 00000000..cd189f44
+--- /dev/null
++++ b/assets/functions/anti_reflexo.py
+@@ -0,0 +1,18 @@
++import cv2
++
++# Carrega a imagem em escala de cinza ou colorida
++img = cv2.imread('assets/pictures/kampu_1786998341.jpg')
++
++# Converte para o espaço de cores LAB para alterar apenas a luminosidade
++lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
++l, a, b = cv2.split(lab)
++
++# Aplica o CLAHE no canal de luminosidade (L)
++clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
++cl = clahe.apply(l)
++
++# Junta os canais de volta e converte para BGR
++limg = cv2.merge((cl,a,b))
++resultado = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
++
++cv2.imwrite('resultado_clahe.jpg', resultado)
+\ No newline at end of file
+diff --git a/assets/pictures_to_video.py b/assets/functions/pictures_to_video.py
+similarity index 97%
+rename from assets/pictures_to_video.py
+rename to assets/functions/pictures_to_video.py
+index d2675039..a8fb194d 100644
+--- a/assets/pictures_to_video.py
++++ b/assets/functions/pictures_to_video.py
+@@ -76,7 +76,7 @@ def criar_timelapse(pasta_origem, arquivo_saida, fps=30):
+ # CONFIGURAÇÕES DE USO
+ # ==========================================
+ pasta_das_fotos = 'assets/pictures'       # Coloque o caminho da sua pasta aqui
+-nome_do_video = 'kampu_mulungu.mp4'      # Nome do arquivo final
++nome_do_video = 'kampu.mp4'      # Nome do arquivo final
+ frames_por_segundo = 15                  # 24 ou 30 para vídeo padrão, 60 para movimento super suave
+ 
+ # Executa o código
+diff --git a/firmware/.gitignore b/firmware/.gitignore
+new file mode 100644
+index 00000000..2a046ba9
+--- /dev/null
++++ b/firmware/.gitignore
+@@ -0,0 +1,6 @@
++.pio
++.vscode/.browse.c_cpp.db*
++.vscode/c_cpp_properties.json
++.vscode/launch.json
++.vscode/ipch
++platformio.ini
+\ No newline at end of file
+diff --git a/firmware/node_camera_esp32/.vscode/settings.json b/firmware/node_camera_esp32/.vscode/settings.json
+new file mode 100644
+index 00000000..70e34ecb
+--- /dev/null
++++ b/firmware/node_camera_esp32/.vscode/settings.json
+@@ -0,0 +1,3 @@
++{
++    "C_Cpp.errorSquiggles": "disabled"
++}
+\ No newline at end of file
+diff --git a/firmware/node_camera_esp32/platformio.ini b/firmware/node_camera_esp32/platformio_example.ini
+similarity index 82%
+rename from firmware/node_camera_esp32/platformio.ini
+rename to firmware/node_camera_esp32/platformio_example.ini
+index 239448fb..190542aa 100644
+--- a/firmware/node_camera_esp32/platformio.ini
++++ b/firmware/node_camera_esp32/platformio_example.ini
+@@ -13,6 +13,5 @@ build_flags =
+     -D ARDUINO_USB_MODE=1
+     -D BOARD_HAS_PSRAM
+     -mfix-esp32-psram-cache-issue
+-
+-lib_deps =
+-    tzapu/WiFiManager@^2.0.17
+\ No newline at end of file
++    -D WIFI_SSID=\"NomeDaSuaRedeReal\"
++    -D WIFI_PASS=\"SuaSenhaRealAqui\"
+\ No newline at end of file
+diff --git a/firmware/node_camera_esp32/src/main.cpp b/firmware/node_camera_esp32/src/main.cpp
+index 62301b69..bae38f66 100644
+--- a/firmware/node_camera_esp32/src/main.cpp
++++ b/firmware/node_camera_esp32/src/main.cpp
+@@ -1,9 +1,12 @@
+ #include <Arduino.h>
+ #include <WiFi.h>
+-#include <WiFiManager.h>
+ #include "esp_camera.h"
+ #include "esp_http_server.h"
+ 
++// --- CREDENCIAIS WIFI (hardcoded) ---
++const char* ssid = WIFI_SSID;
++const char* pass = WIFI_PASS;
++
+ // --- MAPEAMENTO DE HARDWARE ---
+ #define PWDN_GPIO_NUM     -1
+ #define RESET_GPIO_NUM    -1
+@@ -27,21 +30,17 @@ httpd_handle_t camera_httpd = NULL;
+ static esp_err_t capture_handler(httpd_req_t *req) {
+   camera_fb_t *fb = NULL;
+   esp_err_t res = ESP_OK;
+-  
+   fb = esp_camera_fb_get();
+   if (!fb) {
+     Serial.println("Erro: Falha na captura da foto");
+     httpd_resp_send_500(req);
+     return ESP_FAIL;
+   }
+-  
+   httpd_resp_set_type(req, "image/jpeg");
+   httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
+   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+-  
+   res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
+   esp_camera_fb_return(fb);
+-  
+   return res;
+ }
+ 
+@@ -49,9 +48,9 @@ void startCameraServer() {
+   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+   config.server_port = 80;
+   config.max_uri_handlers = 4;
+-  config.max_open_sockets = 4;     
+-  config.stack_size = 8192;        
+-  config.recv_wait_timeout = 10; 
++  config.max_open_sockets = 4;
++  config.stack_size = 8192;
++  config.recv_wait_timeout = 10;
+   config.send_wait_timeout = 10;
+ 
+   httpd_uri_t capture_uri = { .uri = "/capture", .method = HTTP_GET, .handler = capture_handler, .user_ctx = NULL };
+@@ -62,10 +61,33 @@ void startCameraServer() {
+   }
+ }
+ 
++void connectWiFi() {
++  Serial.print("Conectando ao Wi-Fi");
++  WiFi.mode(WIFI_STA);
++  WiFi.begin(ssid, pass);
++
++  int tentativas = 0;
++  while (WiFi.status() != WL_CONNECTED && tentativas < 40) { // ~20s de timeout
++    delay(500);
++    Serial.print(".");
++    tentativas++;
++  }
++
++  if (WiFi.status() != WL_CONNECTED) {
++    Serial.println("\nFalha ao conectar. Reiniciando...");
++    delay(2000);
++    ESP.restart();
++  }
++
++  Serial.println("\nWiFi Conectado!");
++  Serial.print("Endpoint de Captura: http://");
++  Serial.print(WiFi.localIP());
++  Serial.println("/capture");
++}
++
+ void setup() {
+   Serial.begin(115200);
+-  delay(3000); 
+-  
++  delay(3000);
+   Serial.println("\n--- Kampu OS: Iniciando Câmera em SVGA (800x600) ---");
+ 
+   camera_config_t config;
+@@ -88,9 +110,7 @@ void setup() {
+   config.pin_pwdn = PWDN_GPIO_NUM;
+   config.pin_reset = RESET_GPIO_NUM;
+   config.xclk_freq_hz = 20000000;
+-  config.pixel_format = PIXFORMAT_JPEG; 
+-  
+-  // Resolução média para estabilidade total (Ideal para a IA do Kampu)
++  config.pixel_format = PIXFORMAT_JPEG;
+   config.frame_size = FRAMESIZE_SVGA; // 800x600
+   config.jpeg_quality = 12;
+   config.fb_count = 1;
+@@ -99,27 +119,21 @@ void setup() {
+   if (err != ESP_OK) {
+     Serial.printf("Erro fatal na câmera: 0x%x\n", err);
+     delay(3000);
+-    ESP.restart(); 
++    ESP.restart();
+   }
+ 
+   camera_fb_t *fb = esp_camera_fb_get();
+   if (fb) esp_camera_fb_return(fb);
+ 
+-  WiFiManager wm;
+-  Serial.println("Conectando ao Wi-Fi...");
+-  
+-  if (!wm.autoConnect("Kampu_OS")) {
+-    ESP.restart();
+-  }
+-
+-  Serial.println("WiFi Conectado!");
+-  Serial.print("Endpoint de Captura: http://");
+-  Serial.print(WiFi.localIP());
+-  Serial.println("/capture");
+-
++  connectWiFi();
+   startCameraServer();
+ }
+ 
+ void loop() {
+-  delay(10000); 
++  // Reconecta automaticamente se o WiFi cair
++  if (WiFi.status() != WL_CONNECTED) {
++    Serial.println("WiFi caiu, reconectando...");
++    connectWiFi();
++  }
++  delay(10000);
+ }
+\ No newline at end of file
+diff --git a/firmware/node_esp8266/platformio_example.ini b/firmware/node_esp8266/platformio_example.ini
+new file mode 100644
+index 00000000..dc4ab4f6
+--- /dev/null
++++ b/firmware/node_esp8266/platformio_example.ini
+@@ -0,0 +1,12 @@
++[env:nodemcuv2]
++platform = espressif8266
++board = nodemcuv2
++framework = arduino
++monitor_speed = 115200
++build_flags =
++    -D WIFI_SSID=\"NomeDaSuaRedeReal\"
++    -D WIFI_PASS=\"SuaSenhaRealAqui\"
++lib_deps = 
++    adafruit/DHT sensor library @ ^1.4.4
++    adafruit/Adafruit Unified Sensor @ ^1.1.9
++    bblanchon/ArduinoJson @ ^6.21.3
+\ No newline at end of file
+diff --git a/firmware/node_esp8266/src/main.cpp b/firmware/node_esp8266/src/main.cpp
+index 63c79b3c..6ceb5efa 100644
+--- a/firmware/node_esp8266/src/main.cpp
++++ b/firmware/node_esp8266/src/main.cpp
+@@ -1,6 +1,7 @@
+ #include <Arduino.h>
+ #include <ESP8266WiFi.h>
+ #include <ESP8266HTTPClient.h>
++#include <ESP8266WebServer.h>
+ #include <WiFiClient.h>
+ #include <DHT.h>
+ #include <ArduinoJson.h>
+@@ -10,7 +11,7 @@ const char* ssid = WIFI_SSID;
+ const char* password = WIFI_PASS;
+ 
+ // --- URL do Backend Flask ---
+-const char* serverUrl = "http://192.168.0.40:5000/api/sensores"; 
++const char* serverUrl = "http://192.168.0.40:5000/api/sensores";
+ 
+ // --- Configurações do Sensor DHT11 ---
+ #define DHTPIN D2
+@@ -19,9 +20,12 @@ DHT dht(DHTPIN, DHTTYPE);
+ 
+ // --- Configuração do Relé (Umidificador) ---
+ #define RELAY_PIN D1
+-// A maioria dos módulos de relé acionam em nível BAIXO (LOW = Liga, HIGH = Desliga)
+-#define RELAY_ON LOW
+-#define RELAY_OFF HIGH
++
++#define RELAY_ON HIGH
++#define RELAY_OFF LOW
++
++// --- Servidor Web para comandos manuais ---
++ESP8266WebServer server(80);
+ 
+ unsigned long ultimoEnvio = 0;
+ const long intervalo = 10000; // Envio a cada 10 segundos
+@@ -29,12 +33,57 @@ const long intervalo = 10000; // Envio a cada 10 segundos
+ // Variável para rastrear o status e enviar ao Flask
+ String statusUmidificador = "OFF";
+ 
++// Controle manual: quando true, o loop automático de umidade NÃO mexe no relé
++bool modoManual = false;
++
++void ligarRele() {
++  digitalWrite(RELAY_PIN, RELAY_ON);
++  statusUmidificador = "ON";
++}
++
++void desligarRele() {
++  digitalWrite(RELAY_PIN, RELAY_OFF);
++  statusUmidificador = "OFF";
++}
++
++// --- Handlers HTTP ---
++void handleReleOn() {
++  modoManual = true;
++  ligarRele();
++  server.send(200, "application/json", "{\"status\":\"ON\",\"modo\":\"manual\"}");
++  Serial.println("[HTTP] Rele ligado manualmente");
++}
++
++void handleReleOff() {
++  modoManual = true;
++  desligarRele();
++  server.send(200, "application/json", "{\"status\":\"OFF\",\"modo\":\"manual\"}");
++  Serial.println("[HTTP] Rele desligado manualmente");
++}
++
++void handleReleAuto() {
++  modoManual = false;
++  server.send(200, "application/json", "{\"modo\":\"automatico\"}");
++  Serial.println("[HTTP] Voltou para modo automatico");
++}
++
++void handleStatus() {
++  StaticJsonDocument<200> doc;
++  doc["rele"] = statusUmidificador;
++  doc["modo"] = modoManual ? "manual" : "automatico";
++  doc["umidade"] = dht.readHumidity();
++  doc["temperatura"] = dht.readTemperature();
++
++  String resposta;
++  serializeJson(doc, resposta);
++  server.send(200, "application/json", resposta);
++}
++
+ void setup() {
+   Serial.begin(115200);
+-  
+   // Garante que o relé comece desligado ANTES de abrir a porta
+-  digitalWrite(RELAY_PIN, RELAY_OFF);
+   pinMode(RELAY_PIN, OUTPUT);
++  digitalWrite(RELAY_PIN, RELAY_OFF);
+ 
+   dht.begin();
+ 
+@@ -53,12 +102,26 @@ void setup() {
+ 
+   if (WiFi.status() == WL_CONNECTED) {
+     Serial.println("\nWi-Fi conectado!");
++    Serial.print("IP do dispositivo: ");
++    Serial.println(WiFi.localIP());
++
++    // --- Registra as rotas do servidor web ---
++    server.on("/rele/on", handleReleOn);
++    server.on("/rele/off", handleReleOff);
++    server.on("/rele/auto", handleReleAuto);
++    server.on("/status", handleStatus);
++    server.begin();
++    Serial.println("Servidor HTTP iniciado.");
++    Serial.println("Endpoints: /rele/on  /rele/off  /rele/auto  /status");
+   } else {
+     Serial.println("\nFalha no Wi-Fi. Iniciando modo offline (Apenas controle local do relé).");
+   }
+ }
+ 
+ void loop() {
++  // Atende requisições HTTP a cada iteração do loop
++  server.handleClient();
++
+   unsigned long tempoAtual = millis();
+ 
+   if (tempoAtual - ultimoEnvio >= intervalo) {
+@@ -75,15 +138,16 @@ void loop() {
+     // ==========================================
+     // LÓGICA DE CONTROLE DO UMIDIFICADOR
+     // ==========================================
+-    // Se a umidade cair abaixo de 80%, liga o atomizador
+-    if (umidade < 80.0) {
+-      digitalWrite(RELAY_PIN, RELAY_ON);
+-      statusUmidificador = "ON";
+-    } 
+-    // Se a umidade chegar a 85% ou mais, desliga o atomizador
+-    else if (umidade >= 85.0) {
+-      digitalWrite(RELAY_PIN, RELAY_OFF);
+-      statusUmidificador = "OFF";
++    // Só roda automaticamente se NÃO estiver em modo manual
++    if (!modoManual) {
++      // Se a umidade cair abaixo de 70%, liga o atomizador
++      if (umidade < 70.0) {
++        ligarRele();
++      }
++      // Se a umidade chegar a 85% ou mais, desliga o atomizador
++      else if (umidade >= 85.0) {
++        desligarRele();
++      }
+     }
+ 
+     // ==========================================
+@@ -102,10 +166,10 @@ void loop() {
+       doc["temperatura_ar"] = temperatura;
+       doc["umidade_ar"] = umidade;
+       doc["umidificador"] = statusUmidificador; // Envia o estado real da máquina
++      doc["modo"] = modoManual ? "manual" : "automatico";
+ 
+       String requestBody;
+       serializeJson(doc, requestBody);
+-      
+       int httpResponseCode = http.POST(requestBody);
+ 
+       if (httpResponseCode > 0) {
+@@ -116,7 +180,7 @@ void loop() {
+         Serial.println(httpResponseCode);
+       }
+ 
+-      http.end(); 
++      http.end();
+     }
+   }
+ }
+\ No newline at end of file
